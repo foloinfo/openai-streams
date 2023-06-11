@@ -26,6 +26,7 @@ export const OpenAI: OpenAIEdgeClient = async (
     apiBase = "https://api.openai.com/v1",
     apiKey = process.env.OPENAI_API_KEY,
     apiHeaders = {},
+    apiQueryParams = "",
     controller,
     onDone,
     onParse
@@ -37,7 +38,7 @@ export const OpenAI: OpenAIEdgeClient = async (
 
   const shouldStream = endpoint === "completions" || endpoint === "chat";
   const path = OpenAIAPIEndpoints[endpoint];
-  const response = await fetchWithBackoff(`${apiBase}/${path}`, {
+  const response = await fetchWithBackoff(`${apiBase}/${path}${apiQueryParams}`, {
     method: "POST",
     body: JSON.stringify({
       ...args,

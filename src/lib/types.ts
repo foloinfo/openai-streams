@@ -52,6 +52,11 @@ export interface OpenAIOptions extends OpenAIStreamOptions {
    */
   apiHeaders?: Record<string, string>;
   /**
+   * Additional string to append to the API.
+   * ex. ?api-version=2023-05-15 for Azure OpenAI
+   */
+  apiQueryParams?: string;
+  /**
    * An optional AbortController, which can be used to abort the request
    * mid-flight.
    */
