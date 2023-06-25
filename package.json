@@ -3,9 +3,8 @@
   "name": "@foloinfo/openai-streams",
   "description": "Tools for working with OpenAI streams in Node.js and TypeScript.",
   "homepage": "https://github.com/SpellcraftAI/openai-streams",
-  "version": "5.7.1",
+  "version": "6.1.0",
   "license": "MIT",
-  "type": "module",
   "platform": "node",
   "engines": {
     "node": ">=14"
@@ -13,22 +12,30 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "node.js",
-    "node.d.ts"
+    "./node.*"
   ],
   "exports": {
     "./package.json": "./package.json",
-    "./node": "./node.js",
-    ".": "./dist/index.js",
-    "./*": "./dist/*/index.js"
+    "./node": {
+      "import": "./node.js",
+      "require": "./node.cjs"
+    },
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./*": {
+      "import": "./dist/*/index.js",
+      "require": "./dist/*/index.cjs"
+    }
   },
   "scripts": {
     "dev": "tsmodule dev",
     "export-docs": "pnpm typedoc src",
     "export": "tsmodule build",
+    "cjs": "tsmodule build -b -f cjs",
     "build": "pnpm export && pnpm export-docs",
-    "test": "pnpm export && ava",
-    "retest": "ava",
+    "test": "ava",
     "prepublishOnly": "pnpm test",
     "lint": "eslint src --fix"
   },
@@ -40,12 +47,13 @@
     "ava": "^5.2.0",
     "dotenv": "^16.0.3",
     "eslint": "^8.41.0",
+    "node-fetch": "^3.3.1",
+    "openai": "^3.3.0",
     "typedoc": "^0.24.7",
     "typescript": "^5.0.4"
   },
   "dependencies": {
     "eventsource-parser": "^1.0.0",
-    "openai": "^3.2.1",
     "yield-stream": "^3.0.0"
   },
   "keywords": [
