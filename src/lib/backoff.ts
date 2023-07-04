@@ -28,7 +28,7 @@ export const fetchWithBackoff = async (
 
       if (!response.ok) {
         const errorData = await response.json();
-        if (errorData.type === "RATE_LIMIT_REACHED") {
+        if (errorData.type === "RATE_LIMIT_REACHED" || errorData?.error?.code === "429") {
           throw new Error("RATE_LIMIT_REACHED");
         }
       }
