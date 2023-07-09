@@ -31,6 +31,16 @@ export type OpenAIStream = (
   options: OpenAIStreamOptions
 ) => ReadableStream<Uint8Array>;
 
+const closeController = async(
+  controller: ReadableStreamDefaultController,
+  onDone?: () => void | Promise<void>
+) => {
+  if (controller.desiredSize) {
+    controller.close();
+  }
+  await onDone?.();
+};
+
 /**
  * A `ReadableStream` of server sent events from the given OpenAI API stream.
  *
@@ -50,12 +60,7 @@ export const EventStream: OpenAIStream = (
            * Break if event stream finished.
            */
           if (data === "[DONE]") {
-            const controllerIsClosed = controller.desiredSize === null;
-            if (!controllerIsClosed) {
-              controller.close();
-            }
-
-            await onDone?.();
+            await closeController(controller, onDone);
             return;
           }
           /**
@@ -63,6 +68,20 @@ export const EventStream: OpenAIStream = (
            */
           try {
             const parsed = JSON.parse(data);
+            /**
+             * Break if choice.finish_reason is "stop".
+             * This is for Azure API did not close with [DONE]
+             */
+            if (parsed?.choices) {
+              const { choices } = parsed;
+              for (const choice of choices) {
+                if(choice?.finish_reason === "stop") {
+                  await closeController(controller, onDone);
+                  return;
+                }
+              }
+            }
+
             controller.enqueue(ENCODER.encode(data));
 
             /**
@@ -78,11 +97,6 @@ export const EventStream: OpenAIStream = (
               for (const choice of choices) {
                 if (choice?.finish_reason === "length") {
                   throw new OpenAIError("MAX_TOKENS");
-                }
-                if(choice?.finish_reason === "stop") {
-                  controller.close();
-                  await onDone?.();
-                  return;
                 }
               }
             }
