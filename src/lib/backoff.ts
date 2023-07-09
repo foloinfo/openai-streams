@@ -5,9 +5,9 @@ import type { RequestInfo as NodeFetchRequestInfo, RequestInit as NodeFetchReque
 type Fetch = typeof NodeFetch | typeof fetch;
 
 export interface BackoffOptions {
-  maxRetries: number;
-  delay: number;
-  onRateLimitReached: (
+  maxRetries?: number;
+  delay?: number;
+  onRateLimitReached?: (
     args: {
       retries: number;
       delay: number;
@@ -19,21 +19,17 @@ export const fetchWithBackoff = async (
   input: RequestInfo & NodeFetchRequestInfo,
   init?: RequestInit & NodeFetchRequestInit,
   fetch: Fetch = globalThis.fetch,
-  backoffOptions: BackoffOptions = {
-    delay: 500,
-    maxRetries: 7,
-    onRateLimitReached: () => null
-  }
+  backoffOptions: BackoffOptions = { }
 ) => {
   if (!fetch) {
     throw new Error("No fetch implementation found.");
   }
 
   const {
-    maxRetries,
-    onRateLimitReached,
+    maxRetries = 7,
+    onRateLimitReached = () => null,
   } = backoffOptions;
-  let { delay } = backoffOptions;
+  let { delay = 500 } = backoffOptions;
 
   for (let i = 0; i <= maxRetries; i++) {
     try {
@@ -53,7 +49,7 @@ export const fetchWithBackoff = async (
         i < maxRetries
       ) {
         console.log("Rate limit reached. Retrying in " + delay + "ms");
-        onRateLimitReached({ retries: i, delay });
+        await onRateLimitReached({ retries: i, delay });
 
         await new Promise((resolve) => setTimeout(resolve, delay));
 
