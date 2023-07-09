@@ -79,6 +79,11 @@ export const EventStream: OpenAIStream = (
                 if (choice?.finish_reason === "length") {
                   throw new OpenAIError("MAX_TOKENS");
                 }
+                if(choice?.finish_reason === "stop") {
+                  controller.close();
+                  await onDone?.();
+                  return;
+                }
               }
             }
           } catch (e) {
