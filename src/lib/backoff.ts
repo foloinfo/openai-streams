@@ -7,20 +7,33 @@ type Fetch = typeof NodeFetch | typeof fetch;
 export interface BackoffOptions {
   maxRetries: number;
   delay: number;
+  onRateLimitReached: (
+    args: {
+      retries: number;
+      delay: number;
+    }
+  ) => void;
 }
 
 export const fetchWithBackoff = async (
   input: RequestInfo & NodeFetchRequestInfo,
   init?: RequestInit & NodeFetchRequestInit,
   fetch: Fetch = globalThis.fetch,
-  { delay, maxRetries }: BackoffOptions = {
+  backoffOptions: BackoffOptions = {
     delay: 500,
-    maxRetries: 7
+    maxRetries: 7,
+    onRateLimitReached: () => null
   }
 ) => {
   if (!fetch) {
     throw new Error("No fetch implementation found.");
   }
+
+  const {
+    maxRetries,
+    onRateLimitReached,
+  } = backoffOptions;
+  let { delay } = backoffOptions;
 
   for (let i = 0; i <= maxRetries; i++) {
     try {
@@ -40,6 +53,8 @@ export const fetchWithBackoff = async (
         i < maxRetries
       ) {
         console.log("Rate limit reached. Retrying in " + delay + "ms");
+        onRateLimitReached({ retries: i, delay });
+
         await new Promise((resolve) => setTimeout(resolve, delay));
 
         delay *= 2;

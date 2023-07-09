@@ -3,7 +3,7 @@
   "name": "@foloinfo/openai-streams",
   "description": "Tools for working with OpenAI streams in Node.js and TypeScript.",
   "homepage": "https://github.com/SpellcraftAI/openai-streams",
-  "version": "6.1.4",
+  "version": "6.1.5",
   "license": "MIT",
   "platform": "node",
   "engines": {

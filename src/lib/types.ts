@@ -8,6 +8,7 @@ import type {
 } from "./pinned";
 
 import { OpenAIStreamOptions } from "./streaming";
+import { BackoffOptions } from "./backoff";
 
 import nodeFetch from "node-fetch";
 
@@ -69,6 +70,10 @@ export interface OpenAIOptions extends OpenAIStreamOptions {
    * node environments respectively.
    */
   fetch?: typeof fetch | typeof nodeFetch;
+  /**
+   * Options for the backoff algorithm used to retry requests.
+   */
+  backoffOptions?: BackoffOptions;
 }
 
 /**

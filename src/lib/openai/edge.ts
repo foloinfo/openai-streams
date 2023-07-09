@@ -30,8 +30,9 @@ export const OpenAI: OpenAIEdgeClient = async (
     controller,
     onDone,
     onParse,
-    fetch
-  } = {}
+    fetch,
+    backoffOptions,
+  } = {},
 ) => {
   if (!apiKey) {
     throw new OpenAIError("NO_API_KEY");
@@ -52,7 +53,7 @@ export const OpenAI: OpenAIEdgeClient = async (
       ...apiHeaders,
     },
     signal: controller?.signal,
-  }, fetch);
+  }, fetch, backoffOptions);
 
   switch (response.status) {
     case 401:
