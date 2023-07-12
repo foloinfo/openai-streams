@@ -1,7 +1,6 @@
 import { ENCODER, DECODER } from "../../globs/shared";
 import { ChatParser, TokenParser } from "./transforms";
 
-import { createParser } from "eventsource-parser";
 import { Transform, pipeline, yieldStream } from "yield-stream";
 import { yieldStream as yieldStreamNode } from "yield-stream/node";
 import { OpenAIError } from "../errors";
@@ -41,6 +40,10 @@ const closeController = async(
   await onDone?.();
 };
 
+const bufferIsDone = (buffer: string) => {
+  return buffer.startsWith("data: [DONE]") || buffer === "[DONE]";
+};
+
 /**
  * A `ReadableStream` of server sent events from the given OpenAI API stream.
  *
@@ -53,21 +56,47 @@ export const EventStream: OpenAIStream = (
 ) => {
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      const parser = createParser(async (event) => {
-        if (event.type === "event") {
-          const { data } = event;
-          /**
-           * Break if event stream finished.
-           */
-          if (data === "[DONE]") {
+
+      // Check if the stream is a NodeJS stream or a browser stream.
+      // @ts-ignore - TS doesn't know about `pipe` on streams.
+      const isNodeJsStream = typeof stream.pipe === "function";
+      let buffer = "";
+
+      for await (const chunk of isNodeJsStream
+        ? yieldStreamNode<Buffer>(stream as NodeJS.ReadableStream)
+        : yieldStream(stream as ReadableStream<Uint8Array>)
+      ) {
+        buffer += DECODER.decode(chunk, { stream: true });
+        if(bufferIsDone(buffer)){
+          await closeController(controller, onDone);
+          return;
+        }
+
+        while (true) {
+          const boundary = buffer.indexOf("\n\n");
+          if (boundary === -1) {
+            if(bufferIsDone(buffer)){
+              await closeController(controller, onDone);
+              return;
+            }
+            break;
+          }
+
+          const jsonString = buffer.slice(5, boundary).trim();
+          buffer = buffer.slice(boundary + 2);
+          if(bufferIsDone(buffer)){
             await closeController(controller, onDone);
             return;
           }
-          /**
-           * Verify we have a valid JSON object and then enqueue it.
-           */
+
+          let parsed = null;
           try {
-            const parsed = JSON.parse(data);
+            parsed = JSON.parse(jsonString);
+          } catch (err) {
+            // wait for more data to come untill it is a valid json.
+          }
+
+          if(typeof parsed === "object"){
             /**
              * Break if choice.finish_reason is "stop".
              * This is for Azure API did not close with [DONE]
@@ -79,55 +108,23 @@ export const EventStream: OpenAIStream = (
                   await closeController(controller, onDone);
                   return;
                 }
-              }
-            }
-
-            controller.enqueue(ENCODER.encode(data));
-
-            /**
-             * In `tokens` mode, if the user runs out of tokens and the stream
-             * does not complete, we will throw a MAX_TOKENS error. In `raw`
-             * mode, we leave it up to the user to handle this.
-             *
-             * This requires iterating over result.choices[] and throwing an
-             * error if any of them have `{ finish_reason: "length" }`.
-             */
-            if (mode === "tokens" && parsed?.choices) {
-              const { choices } = parsed;
-              for (const choice of choices) {
-                if (choice?.finish_reason === "length") {
+                if (mode === "tokens" && choice?.finish_reason === "length") {
                   throw new OpenAIError("MAX_TOKENS");
                 }
               }
             }
-          } catch (e) {
-            controller.error(e);
+
+            if (parsed.hasOwnProperty("error")) {
+              controller.error(new Error(parsed.error.message));
+            }
+
+            // only send valid json
+            controller.enqueue(ENCODER.encode(jsonString));
+            parsed = null;
           }
         }
-      });
-
-      // Check if the stream is a NodeJS stream or a browser stream.
-      // @ts-ignore - TS doesn't know about `pipe` on streams.
-      const isNodeJsStream = typeof stream.pipe === "function";
-
-      /**
-       * Feed the parser with decoded chunks from the raw stream.
-       */
-      for await (const chunk of isNodeJsStream
-        ? yieldStreamNode<Buffer>(stream as NodeJS.ReadableStream)
-        : yieldStream(stream as ReadableStream<Uint8Array>)
-      ) {
-        const decoded = DECODER.decode(chunk);
-
-        try {
-          const parsed = JSON.parse(decoded);
-
-          if (parsed.hasOwnProperty("error"))
-            controller.error(new Error(parsed.error.message));
-        } catch (e) {}
-
-        parser.feed(decoded);
       }
+
     },
   });
 };
@@ -138,7 +135,7 @@ export const EventStream: OpenAIStream = (
  */
 const CallbackHandler = ({ onParse }: OpenAIStreamOptions) => {
   const handler: Transform  = async function* (chunk) {
-    const decoded = DECODER.decode(chunk);
+    const decoded = DECODER.decode(chunk, { stream: true });
     onParse?.(decoded);
     if (decoded) {
       yield ENCODER.encode(decoded);

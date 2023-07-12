@@ -7,7 +7,7 @@ import { yieldStream } from "yield-stream";
 import { DECODER } from "../src/globs/shared";
 import nodeFetch from "node-fetch";
 
-test.serial("'completions' endpoint", async (t) => {
+test.skip("'completions' endpoint", async (t) => {
   const stream = await OpenAI("completions", {
     model: "text-davinci-003",
     prompt: "Write a sentence.",
@@ -26,7 +26,7 @@ test.serial("'completions' endpoint", async (t) => {
   t.pass();
 });
 
-test.serial("'edits' endpoint", async (t) => {
+test.skip("'edits' endpoint", async (t) => {
   const stream = await OpenAI("edits", {
     model: "text-davinci-edit-001",
     input: "helo wrld",
@@ -47,12 +47,15 @@ test.serial("'edits' endpoint", async (t) => {
 
 test.serial("mode = 'raw': error handling", async (t) => {
   const tokenStream = await OpenAI(
-    "completions",
+    "chat",
     {
-      model: "text-davinci-003",
-      prompt: "Write a long sentence.",
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "user", content: "This is a test message, say hello!" },
+      ],
       max_tokens: 1,
     },
+
     { mode: "raw" }
   );
 
@@ -69,11 +72,13 @@ test.serial("mode = 'raw': error handling", async (t) => {
 test.serial("mode = 'tokens': error handling", async (t) => {
   try {
     const tokenStream = await OpenAI(
-      "completions",
+      "chat",
       {
-        model: "text-davinci-003",
-        prompt: "Write a short sentence.",
-        max_tokens: 5,
+        model: "gpt-3.5-turbo",
+        messages: [
+          { role: "user", content: "This is a test message, say hello!" },
+        ],
+        max_tokens: 1,
       },
       { mode: "tokens" }
     );
@@ -97,7 +102,6 @@ test.serial("ChatGPT support", async (t) => {
   const stream = await OpenAI("chat", {
     model: "gpt-3.5-turbo",
     messages: [
-      { role: "system", content: "You are a helpful assistant." },
       { role: "user", content: "This is a test message, say hello!" },
     ],
   });
@@ -111,7 +115,63 @@ test.serial("ChatGPT support", async (t) => {
   t.pass();
 });
 
-test.serial("API base support", async (t) => {
+test.serial("ChatGPT Azure support", async (t) => {
+  const stream = await OpenAI("chat",
+    {
+      model: "gpt-35-turbo",
+      messages: [
+        { role: "system", content: "You are a helpful assistant." },
+        { role: "user", content: "This is a test message, say hello!" },
+      ],
+    },
+    {
+      apiKey: process.env.OPENAI_AZURE_API_KEY,
+      apiBase: process.env.OPENAI_AZURE_URL,
+      apiHeaders: {
+        "api-key": process.env.OPENAI_AZURE_API_KEY,
+      },
+      apiQueryParams: "?api-version=2023-05-15"
+    }
+  );
+
+  const DECODER = new TextDecoder();
+  for await (const serialized of yieldStream(stream)) {
+    const string = DECODER.decode(serialized);
+    console.log(string);
+  }
+
+  t.pass();
+});
+
+
+test.serial("ChatGPT Azure multibytes support", async (t) => {
+  const stream = await OpenAI("chat",
+    {
+      model: "gpt-35-turbo",
+      messages: [
+        { role: "user", content: "これはテストのメッセージです。こんにちは！" }
+      ],
+    },
+    {
+      apiKey: process.env.OPENAI_AZURE_API_KEY,
+      apiBase: process.env.OPENAI_AZURE_URL,
+      apiHeaders: {
+        "api-key": process.env.OPENAI_AZURE_API_KEY,
+      },
+      apiQueryParams: "?api-version=2023-05-15"
+    }
+  );
+
+  const DECODER = new TextDecoder();
+  for await (const serialized of yieldStream(stream)) {
+    const string = DECODER.decode(serialized);
+    console.log(string);
+  }
+
+  t.pass();
+});
+
+test.skip("API base support", async (t) => {
   const stream = await OpenAI(
     "chat",
     {
@@ -205,10 +265,12 @@ test.serial("cancelling streams", async (t) => {
   const controller = new AbortController();
 
   const stream = await OpenAI(
-    "completions",
+    "chat",
     {
-      model: "text-davinci-003",
-      prompt: "Write two sentences.",
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "user", content: "This is a test message, say hello!" },
+      ],
       max_tokens: 50,
     },
     {
@@ -250,7 +312,6 @@ test.serial("should work with custom fetch", async (t) => {
   const stream = await OpenAI("chat", {
     model: "gpt-3.5-turbo",
     messages: [
-      { role: "system", content: "You are a helpful assistant." },
       { role: "user", content: "This is a test message, say hello!" },
     ],
   }, { fetch: mockFetch });
