@@ -1,6 +1,7 @@
 import { ENCODER, DECODER } from "../../globs/shared";
 import { ChatParser, TokenParser } from "./transforms";
 
+import { createParser } from "eventsource-parser";
 import { Transform, pipeline, yieldStream } from "yield-stream";
 import { yieldStream as yieldStreamNode } from "yield-stream/node";
 import { OpenAIError } from "../errors";
@@ -30,6 +31,7 @@ export type OpenAIStream = (
   options: OpenAIStreamOptions
 ) => ReadableStream<Uint8Array>;
 
+
 const closeController = async(
   controller: ReadableStreamDefaultController,
   onDone?: () => void | Promise<void>
@@ -40,9 +42,6 @@ const closeController = async(
   await onDone?.();
 };
 
-const bufferIsDone = (buffer: string) => {
-  return buffer.startsWith("data: [DONE]") || buffer === "[DONE]";
-};
 
 /**
  * A `ReadableStream` of server sent events from the given OpenAI API stream.
@@ -56,88 +55,79 @@ export const EventStream: OpenAIStream = (
 ) => {
   return new ReadableStream<Uint8Array>({
     async start(controller) {
+      const parser = createParser(async (event) => {
+        if (event.type === "event") {
+          const { data } = event;
+          /**
+           * Break if event stream finished.
+           */
+          if (data === "[DONE]") {
+            console.log('close by [DONE]');
+            await closeController(controller, onDone);
+            return;
+          }
+          /**
+           * Verify we have a valid JSON object and then enqueue it.
+           */
+          try {
+            const parsed = JSON.parse(data);
+            // Azure API returns a corrupted multi byte characters
+            if(parsed.choices?.[0]?.delta?.content?.includes("�")){
+              return;
+            }
+
+            controller.enqueue(ENCODER.encode(data));
+
+            /**
+             * In `tokens` mode, if the user runs out of tokens and the stream
+             * does not complete, we will throw a MAX_TOKENS error. In `raw`
+             * mode, we leave it up to the user to handle this.
+             *
+             * This requires iterating over result.choices[] and throwing an
+             * error if any of them have `{ finish_reason: "length" }`.
+             */
+            if (mode === "tokens" && parsed?.choices) {
+              const { choices } = parsed;
+              for (const choice of choices) {
+                if (choice?.finish_reason === "length") {
+                  throw new OpenAIError("MAX_TOKENS");
+                }
+              }
+              for (const choice of choices) {
+                if (choice?.finish_reason === "stop") {
+                  console.log('close by stop');
+                  await closeController(controller, onDone);
+                }
+              }
+            }
+          } catch (e) {
+            controller.error(e);
+          }
+        }
+      });
 
       // Check if the stream is a NodeJS stream or a browser stream.
       // @ts-ignore - TS doesn't know about `pipe` on streams.
       const isNodeJsStream = typeof stream.pipe === "function";
-      let buffer = "";
-      let jsonString = "";
 
+      /**
+       * Feed the parser with decoded chunks from the raw stream.
+       */
       for await (const chunk of isNodeJsStream
         ? yieldStreamNode<Buffer>(stream as NodeJS.ReadableStream)
         : yieldStream(stream as ReadableStream<Uint8Array>)
       ) {
-        buffer += DECODER.decode(chunk, { stream: true });
+        const decoded = DECODER.decode(chunk, { stream: true });
 
-        if(bufferIsDone(buffer)){
-          await closeController(controller, onDone);
-          return;
-        }
+        try {
+          const parsed = JSON.parse(decoded);
 
-        while (true) {
-          // Stage 1 of while loop: Accumulate complete JSON in jsonString
-          const boundary = buffer.indexOf("\n\n");
-          if (boundary !== -1) {
-            if(bufferIsDone(buffer)){
-              await closeController(controller, onDone);
-              return;
-            }
+          if (parsed.hasOwnProperty("error"))
+            controller.error(new Error(parsed.error.message));
+        } catch (e) {}
 
-            jsonString += buffer
-              .slice(0, boundary).trim().substring(5); // slice off 'data: '
-            buffer = buffer.slice(boundary + 2);
-          } else {
-            jsonString += buffer;
-            buffer = "";
-            break;
-          }
-
-
-          // Stage 2 of while loop: Handle complete JSON jsonString
-          let parsed = null;
-          try {
-            parsed = JSON.parse(jsonString);
-          } catch (err) {
-            // wait for more data to come untill it is a valid json.
-            break;
-          }
-
-          if(typeof parsed === "object"){
-            /**
-             * Break if choice.finish_reason is "stop".
-             * This is for Azure API did not close with [DONE]
-             */
-            if (parsed?.choices) {
-              const { choices } = parsed;
-              for (const choice of choices) {
-                if(choice?.finish_reason === "stop") {
-                  await closeController(controller, onDone);
-                  return;
-                }
-                if (mode === "tokens" && choice?.finish_reason === "length") {
-                  throw new OpenAIError("MAX_TOKENS");
-                }
-              }
-            }
-
-            if (parsed.hasOwnProperty("error")) {
-              controller.error(new Error(parsed.error.message));
-            }
-
-            // only send valid json
-            controller.enqueue(ENCODER.encode(jsonString));
-            // Reset parsed check and jsonString for next complete JSON
-            parsed = null;
-            jsonString = "";
-          }
-
-          if(bufferIsDone(buffer)){
-            await closeController(controller, onDone);
-            return;
-          }
-        }
+        parser.feed(decoded);
       }
-
     },
   });
 };

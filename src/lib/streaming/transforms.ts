@@ -29,7 +29,7 @@ export const getTokensFromResponse = (response: any) => {
  * and yields the delta of the first choice.
  */
 export const ChatParser: Transform = async function* (chunk) {
-  const decoded = DECODER.decode(chunk);
+  const decoded = DECODER.decode(chunk, { stream: true });
   const response = JSON.parse(decoded);
   const firstResult = response?.choices?.[0];
   const { delta } = firstResult ?? {};
