@@ -31,6 +31,7 @@
     "build": "pnpm export && pnpm export-docs",
     "test": "ava",
     "prepublishOnly": "pnpm test",
+    "release": "pnpm build && npm publish --access public",
     "lint": "eslint src --fix"
   },
   "devDependencies": {

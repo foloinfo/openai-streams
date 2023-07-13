@@ -92,10 +92,6 @@ export const EventStream: OpenAIStream = (
             break;
           }
 
-          if(bufferIsDone(buffer)){
-            await closeController(controller, onDone);
-            return;
-          }
 
           // Stage 2 of while loop: Handle complete JSON jsonString
           let parsed = null;
@@ -133,6 +129,11 @@ export const EventStream: OpenAIStream = (
             // Reset parsed check and jsonString for next complete JSON
             parsed = null;
             jsonString = "";
+          }
+
+          if(bufferIsDone(buffer)){
+            await closeController(controller, onDone);
+            return;
           }
         }
       }
