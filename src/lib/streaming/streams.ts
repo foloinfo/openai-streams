@@ -78,6 +78,11 @@ export const EventStream: OpenAIStream = (
           // Stage 1 of while loop: Accumulate complete JSON in jsonString
           const boundary = buffer.indexOf("\n\n");
           if (boundary !== -1) {
+            if(bufferIsDone(buffer)){
+              await closeController(controller, onDone);
+              return;
+            }
+
             jsonString += buffer
               .slice(0, boundary).trim().substring(5); // slice off 'data: '
             buffer = buffer.slice(boundary + 2);
@@ -85,6 +90,11 @@ export const EventStream: OpenAIStream = (
             jsonString += buffer;
             buffer = "";
             break;
+          }
+
+          if(bufferIsDone(buffer)){
+            await closeController(controller, onDone);
+            return;
           }
 
           // Stage 2 of while loop: Handle complete JSON jsonString
