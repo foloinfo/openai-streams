@@ -30,18 +30,23 @@ export const getTokensFromResponse = (response: any) => {
  */
 export const ChatParser: Transform = async function* (chunk) {
   const decoded = DECODER.decode(chunk, { stream: true });
-  const response = JSON.parse(decoded);
-  const firstResult = response?.choices?.[0];
-  const { delta } = firstResult ?? {};
+  try{
+    const response = JSON.parse(decoded);
+    const firstResult = response?.choices?.[0];
+    const { delta } = firstResult ?? {};
 
-  if (typeof delta !== "object") {
-    console.error("Received invalid delta from OpenAI in ChatParser.");
-    throw new OpenAIError("UNKNOWN");
-  }
+    if (typeof delta !== "object") {
+      console.error("Received invalid delta from OpenAI in ChatParser.");
+      throw new OpenAIError("UNKNOWN");
+    }
 
-  const { content } = delta;
-  if (content) {
-    yield ENCODER.encode(content);
+    const { content } = delta;
+    if (content) {
+      yield ENCODER.encode(content);
+    }
+  } catch (error) {
+    console.error(error);
+    console.log(decoded);
   }
 };
 

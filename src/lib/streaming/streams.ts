@@ -62,7 +62,6 @@ export const EventStream: OpenAIStream = (
            * Break if event stream finished.
            */
           if (data === "[DONE]") {
-            console.log('close by [DONE]');
             await closeController(controller, onDone);
             return;
           }
@@ -71,11 +70,6 @@ export const EventStream: OpenAIStream = (
            */
           try {
             const parsed = JSON.parse(data);
-            // Azure API returns a corrupted multi byte characters
-            if(parsed.choices?.[0]?.delta?.content?.includes("�")){
-              return;
-            }
-
             controller.enqueue(ENCODER.encode(data));
 
             /**
@@ -95,7 +89,6 @@ export const EventStream: OpenAIStream = (
               }
               for (const choice of choices) {
                 if (choice?.finish_reason === "stop") {
-                  console.log('close by stop');
                   await closeController(controller, onDone);
                 }
               }
