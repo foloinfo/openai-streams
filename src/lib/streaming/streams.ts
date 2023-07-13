@@ -61,39 +61,39 @@ export const EventStream: OpenAIStream = (
       // @ts-ignore - TS doesn't know about `pipe` on streams.
       const isNodeJsStream = typeof stream.pipe === "function";
       let buffer = "";
+      let jsonString = "";
 
       for await (const chunk of isNodeJsStream
         ? yieldStreamNode<Buffer>(stream as NodeJS.ReadableStream)
         : yieldStream(stream as ReadableStream<Uint8Array>)
       ) {
         buffer += DECODER.decode(chunk, { stream: true });
+
         if(bufferIsDone(buffer)){
           await closeController(controller, onDone);
           return;
         }
 
         while (true) {
+          // Stage 1 of while loop: Accumulate complete JSON in jsonString
           const boundary = buffer.indexOf("\n\n");
-          if (boundary === -1) {
-            if(bufferIsDone(buffer)){
-              await closeController(controller, onDone);
-              return;
-            }
+          if (boundary !== -1) {
+            jsonString += buffer
+              .slice(0, boundary).trim().substring(5); // slice off 'data: '
+            buffer = buffer.slice(boundary + 2);
+          } else {
+            jsonString += buffer;
+            buffer = "";
             break;
           }
 
-          const jsonString = buffer.slice(5, boundary).trim();
-          buffer = buffer.slice(boundary + 2);
-          if(bufferIsDone(buffer)){
-            await closeController(controller, onDone);
-            return;
-          }
-
+          // Stage 2 of while loop: Handle complete JSON jsonString
           let parsed = null;
           try {
             parsed = JSON.parse(jsonString);
           } catch (err) {
             // wait for more data to come untill it is a valid json.
+            break;
           }
 
           if(typeof parsed === "object"){
@@ -120,7 +120,9 @@ export const EventStream: OpenAIStream = (
 
             // only send valid json
             controller.enqueue(ENCODER.encode(jsonString));
+            // Reset parsed check and jsonString for next complete JSON
             parsed = null;
+            jsonString = "";
           }
         }
       }
